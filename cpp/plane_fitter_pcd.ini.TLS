@@ -1,0 +1,51 @@
+# ini file for TLS data
+#a list of input .pcd files, one file path per line (path should be relative to the director containing ths list file)
+list=D:\data\TLS\andreashaus\list_pcd.txt
+
+#where to save output files
+outputDir=.
+
+# scale unit from cm to mm (adjust according to the unit of your .pcd file)
+unitScaleFactor=10
+
+showWindow=1
+
+#T_mse
+# std tolerance for merging, unit: mm
+stdTol_merge=5
+# std tolerance for init, unit: mm
+stdTol_init=5
+# \sigma in the paper, unit: mm^-1, set 0 to make depth independent
+depthSigma=0
+
+#T_ang
+# unit: mm, closest/farthest z to be considered
+z_near=500
+z_far=4000
+# unit: degree, corresponding normal deviation angle threshold
+# set the near and far to be the same to make depth independent
+angleDegree_near=10
+angleDegree_far=10
+# max deviation angle for merge, unit: degree
+similarityDegreeTh_merge=20
+similarityDegreeTh_refine=20
+
+#T_dz
+# corresponds to the 2*\alpha in the paper, set 0 to make depth independent
+depthAlpha=0
+# unit: mm
+depthChangeTol=18
+
+#use 0 for Kinect and 1 for TLS data where nan points are more randomly distributed
+initType=1
+
+# min number of supporting point
+# note: adjust this if image size < 640x480
+minSupport=800
+
+# note: adjust this if image size < 640x480
+windowWidth=10
+windowHeight=10
+
+# perform refinement of details or not (True=1, False=0)
+doRefine=1
