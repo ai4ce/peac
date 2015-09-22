@@ -760,7 +760,7 @@ namespace ahc {
 			const int Nw   = this->width/this->windowWidth;
 
 			//1. init nodes
-			std::vector<PlaneSeg::Ptr> G(Nh*Nw,0);
+			std::vector<PlaneSeg::Ptr> G(Nh*Nw, static_cast<PlaneSeg::Ptr>(0));
 			//this->blkStats.resize(Nh*Nw);
 
 #ifdef DEBUG_INIT

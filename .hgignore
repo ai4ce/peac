@@ -1,0 +1,3 @@
+syntax: glob
+build/*
+*/3x3-C/*

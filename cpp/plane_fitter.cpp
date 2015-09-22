@@ -29,7 +29,13 @@
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+#ifdef USE_OPENNI1
 #include <pcl/io/openni_grabber.h>
+#else
+#include <pcl/io/openni2_grabber.h>
+#include <pcl/io/openni2/openni.h>
+#endif
 
 #include "opencv2/opencv.hpp"
 
@@ -109,7 +115,11 @@ public:
 	//start the main loop
 	void run ()
 	{
+#ifdef USE_OPENNI1
 		pcl::Grabber* grabber = new pcl::OpenNIGrabber();
+#else
+		pcl::Grabber* grabber = new pcl::io::OpenNI2Grabber();
+#endif
 
 		boost::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> f =
 			boost::bind (&MainLoop::onNewCloud, this, _1);
