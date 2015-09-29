@@ -56,7 +56,7 @@ struct OrganizedImage3D {
 	int height() const { return cloud.height; }
 	bool get(const int row, const int col, double& x, double& y, double& z) const {
 		const PointT& pt=cloud.at(col,row);
-		x=pt.x; y=pt.y; z=pt.z;
+		x=pt.x*unitScaleFactor; y=pt.y*unitScaleFactor; z=pt.z*unitScaleFactor;
 		return pcl_isnan(z)==0; //return false if current depth is NaN
 	}
 };
@@ -132,23 +132,72 @@ public:
 		cv::namedWindow("rgb");
 		cv::namedWindow("seg");
 		cv::namedWindow("control", cv::WINDOW_NORMAL);
-		
-		int mergeMSETol=(int)pf.params.stdTol_merge,
-			minSupport=(int)pf.minSupport,
-			doRefine=(int)pf.doRefine;
-		cv::createTrackbar("epsilon","control", &mergeMSETol, (int)pf.params.stdTol_merge*2);
+		const int baseX = 80, baseY = 10;
+		cv::moveWindow("rgb", baseX, baseY);
+		cv::moveWindow("control", baseX + 10 + 640, baseY);
+		cv::moveWindow("seg", baseX, baseY + 10 + 480);
+
+		// related to T_mse
+		int depthSigma = (int)(pf.params.depthSigma * 1e7);
+		int mergeMSETol = (int)pf.params.stdTol_merge;
+		int initMSETol = (int)pf.params.stdTol_init;
+		cv::createTrackbar("depthSigma", "control", &depthSigma, 5 * depthSigma);
+		cv::createTrackbar("epsilon", "control", &mergeMSETol, 2 * mergeMSETol);
+		cv::createTrackbar("eps_init", "control", &initMSETol, 2 * initMSETol);
+
+		// related to T_ang
+		int z_near = (int)pf.params.z_near;
+		int z_far = (int)pf.params.z_far;
+		int angle_near = (int)15;
+		int angle_far = (int)90;
+		int simThMergeDeg = 60;
+		int simThRefDeg = 30;
+		cv::createTrackbar("z_near", "control", &z_near, 2 * z_near);
+		cv::createTrackbar("z_far", "control", &z_far, 2 * z_far);
+		cv::createTrackbar("angle_near", "control", &angle_near, 90);
+		cv::createTrackbar("angle_far", "control", &angle_far, 90);
+		cv::createTrackbar("simThMergeDeg", "control", &simThMergeDeg, 90);
+		cv::createTrackbar("simThRefDeg", "control", &simThRefDeg, 90);
+
+		// related to T_dz
+		int depthAlpha = (int)(pf.params.depthAlpha * 100);
+		int depthChangeTol = (int)(pf.params.depthChangeTol * 100);
+		cv::createTrackbar("depthAlpha", "control", &depthAlpha, 2 * depthAlpha);
+		cv::createTrackbar("depthChangeTol", "control", &depthChangeTol, 2 * depthChangeTol);
+
+		// other
+		int minSupport = (int)pf.minSupport;
+		int doRefine = (int)pf.doRefine;
 		cv::createTrackbar("T_{NUM}","control", &minSupport, pf.minSupport*5);
 		cv::createTrackbar("Refine On","control", &doRefine, 1);
-		cv::createTrackbar("windowHeight","control", &pf.windowHeight, 2*pf.windowHeight);
-		cv::createTrackbar("windowWidth","control", &pf.windowWidth, 2*pf.windowWidth);
+		cv::createTrackbar("windowHeight","control", &(pf.windowHeight), 2*pf.windowHeight);
+		cv::createTrackbar("windowWidth","control", &(pf.windowWidth), 2*pf.windowWidth);
+		int erodeType = (int)pf.erodeType;
+		cv::createTrackbar("erodeType", "control", &erodeType, 2);
 
 		//GUI loop
 		while (!done)
 		{
-			pf.params.stdTol_merge=(double)mergeMSETol;
+			static bool reported = false;
+			pf.params.depthSigma = depthSigma*1e-7;
+			pf.params.stdTol_init = (double)initMSETol;
+			pf.params.stdTol_merge = (double)mergeMSETol;
+
+			pf.params.z_near = (double)z_near;
+			pf.params.z_far = (double)z_far;
+			pf.params.angle_near = (double)MACRO_DEG2RAD(angle_near);
+			pf.params.angle_far = (double)MACRO_DEG2RAD(angle_far);
+			pf.params.similarityTh_merge = std::cos(MACRO_DEG2RAD(simThMergeDeg));
+			pf.params.similarityTh_refine = std::cos(MACRO_DEG2RAD(simThRefDeg));
+
+			pf.params.depthAlpha = (double)depthAlpha*0.01;
+			pf.params.depthChangeTol = (double)depthChangeTol*0.01;
+
 			pf.minSupport=minSupport;
 			pf.doRefine=doRefine!=0;
-			onKey(cv::waitKey(1000));
+			pf.erodeType = (ahc::ErodeType)erodeType;
+
+			onKey(cv::waitKey(1000)); //update parameter once per second
 		}
 
 		grabber->stop();
