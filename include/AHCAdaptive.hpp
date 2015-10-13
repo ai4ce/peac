@@ -76,7 +76,12 @@ struct IntegralStats {
 		}
 		stats.N = n;
 
-		stats.compute(center, normal, mse, curvature);
+		if (n >= 4)
+			stats.compute(center, normal, mse, curvature);
+		else {
+			mse = DBL_MAX;
+			curvature = DBL_MAX;
+		}
 	}
 
 	inline void reset(const int width, const int height) {

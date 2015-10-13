@@ -112,7 +112,7 @@ public:
 		//show frame rate
 		std::stringstream stext;
 		stext<<"Frame Rate: "<<(1000.0/process_ms)<<"Hz";
-		cv::putText(seg, stext.str(), cv::Point(15,15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,255,255,1));
+		cv::putText(seg, stext.str(), cv::Point(15,15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0,0,0,1));
 
 		cv::imshow("rgb", rgb);
 		cv::imshow("seg", seg);

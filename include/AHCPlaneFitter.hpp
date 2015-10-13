@@ -788,10 +788,7 @@ namespace ahc {
 				double curvature;
 
 				Block() : imin(-1), imax(-1), jmin(-1), jmax(-1), valid(false) {}
-				Block(int i0, int i1, int j0, int j1, int id, cv::Mat1i& flag) : imin(i0), imax(i1), jmin(j0), jmax(j1), valid(true), mse(DBL_MAX), curvature(DBL_MAX)
-				{
-					setFlag(id, flag);
-				}
+				Block(int i0, int i1, int j0, int j1) : imin(i0), imax(i1), jmin(j0), jmax(j1), valid(true), mse(DBL_MAX), curvature(DBL_MAX) {}
 
 				inline operator cv::Rect() const { return cv::Rect(jmin, imin, IndexWidth(), IndexHeight()); }
 				
@@ -821,17 +818,17 @@ namespace ahc {
 					flag(cv::Rect(jmin, imax, width, 1)) = id;
 				}
 
-				inline void split(std::vector<Block>& output, cv::Mat1i& flag) { //TODO: split into 2 or 4?
+				inline void split(std::vector<Block>& output) { //TODO: split into 2 or 4?
 					valid = false;
 					const int imid_low = (imin + imax) / 2;
 					const int imid_high = imid_low + 1;
 					const int jmid_low = (jmin + jmax) / 2;
 					const int jmid_high = jmid_low + 1;
 
-					output.push_back(Block(imin, imid_low, jmin, jmid_low, output.size(), flag));
-					output.push_back(Block(imid_high, imax, jmin, jmid_low, output.size(), flag));
-					output.push_back(Block(imid_high, imax, jmid_high, jmax, output.size(), flag));
-					output.push_back(Block(imin, imid_low, jmid_high, jmax, output.size(), flag));
+					output.push_back(Block(imin, imid_low, jmin, jmid_low));
+					output.push_back(Block(imid_high, imax, jmin, jmid_low));
+					output.push_back(Block(imid_high, imax, jmid_high, jmax));
+					output.push_back(Block(imin, imid_low, jmid_high, jmax));
 				}
 
 				inline PlaneSeg::Ptr newPlaneSeg(const int rid) const {
@@ -840,31 +837,30 @@ namespace ahc {
 				}
 			};
 			const int minBlockSize = std::min(this->windowHeight, this->windowWidth);
-			cv::Mat1i flag(this->height, this->width, -1);
 			std::vector<Block> blocks;
 			blocks.reserve(this->height*this->width/(minBlockSize*minBlockSize)); //at most this many blocks
 
-			blocks.push_back(Block(0, this->height - 1, 0, this->width - 1, blocks.size(), flag));
+			blocks.push_back(Block(0, this->height - 1, 0, this->width - 1));
 			int ith = 0;
 			//1. divide
 			double max_mse = 0;
 			while (ith<blocks.size()) {
 				Block& ithBlock = blocks[ith];
 				ithBlock.computeOn(integralStats);
-				if (ithBlock.canSplit(minBlockSize)) {
-					if (ithBlock.needSplit(this->params.T_mse(ParamSet::P_INIT, ithBlock.center[2]))) {
-						ithBlock.split(blocks, flag);
+				if (ithBlock.needSplit(this->params.T_mse(ParamSet::P_INIT, ithBlock.center[2]))) {//TODO: is the threshold appropriate
+					if (ithBlock.canSplit(minBlockSize)) {
+						ithBlock.split(blocks);
 					} else {
-						max_mse = std::max(max_mse, ithBlock.mse);
+						ithBlock.valid = false;
 					}
 				} else {
-					ithBlock.valid = false;
+					max_mse = std::max(max_mse, ithBlock.mse);
 				}
 				++ith; //check next
 			}
 			blocks.resize(blocks.size());
 
-#if defined(DEBUG_ADAPT)
+#if defined(DEBUG_ADAPT) && 1
 			int nvalid = 0;
 			dAdapt = cv::Mat(this->height, this->width, CV_8UC3, cv::Scalar(0, 0, 0));
 			for (int i = 0; i < (int)blocks.size(); ++i) {
@@ -873,25 +869,28 @@ namespace ahc {
 				dAdapt(cv::Rect(iBlock)).setTo(/*cv::Scalar(iBlock.mse * 255 / max_mse, 0, 0)*/cv::Scalar(rand()%255,rand()%255,rand()%255));
 				++nvalid;
 			}
-			std::cout << "init: #blocks=" << blocks.size() << ", #valid=" << nvalid << ", max_mse=" << max_mse << std::endl;
+			std::cout << "init: #blocks=" << blocks.size() << ", #valid=" << nvalid << ", sqrt(max_mse)=" << std::sqrt(max_mse) << "mm" << std::endl;
 #endif
+
+			cv::Mat1i flag(this->height, this->width, -1); //flag for connecting edges
 
 			//2. create node
 			std::vector<PlaneSeg::Ptr> G(blocks.size(), static_cast<PlaneSeg::Ptr>(0));
 			for (int i = 0; i < (int)blocks.size(); ++i) {
 				Block& iBlock = blocks[i];
 				if (!iBlock.valid) continue;
+				iBlock.setFlag(i, flag);
 				//node
 				PlaneSeg::shared_ptr p(iBlock.newPlaneSeg(i));
 				G[i] = p.get();
 				minQ.push(p);
-				++nvalid;
 			}
 
 			//3. create edge
 			for (int i = 0; i < (int)blocks.size(); ++i) {
 				Block& iBlock = blocks[i];
 				if (!iBlock.valid) continue;
+				const double similarityTh = params.T_ang(ParamSet::P_INIT, G[i]->center[2]);
 				const int crns[8][2] = {
 					{ iBlock.imin - 1, iBlock.jmin },
 					{ iBlock.imin, iBlock.jmin - 1 },
@@ -915,9 +914,9 @@ namespace ahc {
 						const int jth = flag(il,jl);
 						if(jth>=0) {
 							Block& jBlock = blocks[jth];
-							if(jBlock.valid) {
-								G[i]->connect(G[jth]); //TODO: T_ang
-#if defined(DEBUG_ADAPT)
+							if(jBlock.valid && G[i]->normalSimilarity(*G[jth]) >= similarityTh) {
+								G[i]->connect(G[jth]);
+#if defined(DEBUG_ADAPT) && 1
 								cv::line(dAdapt, iBlock.IndexCenter(), jBlock.IndexCenter(), cv::Scalar(rand()%255,rand()%255,rand()%255));
 #endif
 							}
@@ -930,9 +929,6 @@ namespace ahc {
 					}
 				}
 			}//for each block
-#if defined(DEBUG_ADAPT)
-			//cv::imshow("dAdapt", dAdapt);
-#endif
 		}
 
 		/**
