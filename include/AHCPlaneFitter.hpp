@@ -45,6 +45,7 @@
 #include "AHCTypes.hpp"
 #include "AHCPlaneSeg.hpp"
 #include "AHCParamSet.hpp"
+#include "AHCAdaptive.hpp"
 #include "AHCUtils.hpp"
 
 namespace ahc {
@@ -135,6 +136,7 @@ namespace ahc {
 		std::vector<std::pair<int,int>> rfQueue;//for region grow/floodfill, p.first=pixidx, p.second=plid
 		bool drawCoarseBorder;
 		//std::vector<PlaneSeg::Stats> blkStats;
+		IntegralStats integralStats;
 #if defined(DEBUG_INIT) || defined(DEBUG_CLUSTER)
 		std::string saveDir;
 #endif
@@ -186,6 +188,26 @@ namespace ahc {
 			rfQueue.clear();
 			//blkStats.clear();
 			dirtyBlkMbship=true;
+		}
+
+		double runAdaptive(const Image3D* pointsIn, cv::Mat& seg, bool verbose=true)
+		{
+			if (!pointsIn) return 0;
+			clear();
+			this->points = pointsIn;
+			this->height = points->height();
+			this->width = points->width();
+			//this->ds.reset(new DisjointSet((height / windowHeight)*(width / windowWidth)));
+
+			PlaneSegMinMSEQueue minQ;
+			this->initGraphAdaptive(minQ, seg);
+			//int step = this->ahCluster(minQ);
+			//this->plotSegmentImage(&seg, minSupport);//TODO
+			//if (verbose) {
+			//	std::cout << "#step=" << step << ", #extractedPlanes="
+			//		<< this->extractedPlanes.size() << std::endl;
+			//}
+			return 1;
 		}
 
 		/**
@@ -748,6 +770,170 @@ namespace ahc {
 		cv::Mat dSeg;
 		cv::Mat dGraph;
 #endif
+
+		/**
+		 *  \brief initialize a graph from pointsIn using adaptive blocks
+		 */
+		void initGraphAdaptive(PlaneSegMinMSEQueue& minQ, cv::Mat& dAdapt) {
+			this->integralStats.computeIntegral(*points);
+
+			struct Block {
+				const int imin, imax, jmin, jmax;
+				bool valid;
+				
+				ahc::PlaneSeg::Stats stats;
+				double normal[3];
+				double center[3];
+				double mse;
+				double curvature;
+
+				Block() : imin(-1), imax(-1), jmin(-1), jmax(-1), valid(false) {}
+				Block(int i0, int i1, int j0, int j1, int id, cv::Mat1i& flag) : imin(i0), imax(i1), jmin(j0), jmax(j1), valid(true), mse(DBL_MAX), curvature(DBL_MAX)
+				{
+					setFlag(id, flag);
+				}
+
+				inline operator cv::Rect() const { return cv::Rect(jmin, imin, IndexWidth(), IndexHeight()); }
+				
+				inline void computeOn(const IntegralStats& intStats) {
+					intStats.compute(imax, imin, jmax, jmin, center, normal, mse, curvature, stats);
+				}
+
+				inline int IndexWidth() const { return jmax - jmin + 1; }
+				inline int IndexHeight() const { return imax - imin + 1; }
+				inline cv::Point IndexCenter() const { return cv::Point((jmax + jmin) / 2, (imax + imin) / 2); }
+
+				inline bool canSplit(const int minBlockSize = 2) const {
+					return imax - imin + 1 >= 2 * minBlockSize
+						&& jmax - jmin + 1 >= 2 * minBlockSize;
+				}
+
+				inline bool needSplit(const double mse_threshold) const {
+					return mse > mse_threshold;
+				}
+
+				inline void setFlag(const int id, cv::Mat1i& flag) const {
+					const int width = IndexWidth();
+					const int height = IndexHeight();
+					flag(cv::Rect(jmin, imin, width, 1)) = id;
+					flag(cv::Rect(jmin, imin, 1, height)) = id;
+					flag(cv::Rect(jmax, imin, 1, height)) = id;
+					flag(cv::Rect(jmin, imax, width, 1)) = id;
+				}
+
+				inline void split(std::vector<Block>& output, cv::Mat1i& flag) { //TODO: split into 2 or 4?
+					valid = false;
+					const int imid_low = (imin + imax) / 2;
+					const int imid_high = imid_low + 1;
+					const int jmid_low = (jmin + jmax) / 2;
+					const int jmid_high = jmid_low + 1;
+
+					output.push_back(Block(imin, imid_low, jmin, jmid_low, output.size(), flag));
+					output.push_back(Block(imid_high, imax, jmin, jmid_low, output.size(), flag));
+					output.push_back(Block(imid_high, imax, jmid_high, jmax, output.size(), flag));
+					output.push_back(Block(imin, imid_low, jmid_high, jmax, output.size(), flag));
+				}
+
+				inline PlaneSeg::Ptr newPlaneSeg(const int rid) const {
+					PlaneSeg::Ptr ret = new PlaneSeg(rid, mse, center, normal, curvature, stats);
+					return ret;
+				}
+			};
+			const int minBlockSize = std::min(this->windowHeight, this->windowWidth);
+			cv::Mat1i flag(this->height, this->width, -1);
+			std::vector<Block> blocks;
+			blocks.reserve(this->height*this->width/(minBlockSize*minBlockSize)); //at most this many blocks
+
+			blocks.push_back(Block(0, this->height - 1, 0, this->width - 1, blocks.size(), flag));
+			int ith = 0;
+			//1. divide
+			double max_mse = 0;
+			while (ith<blocks.size()) {
+				Block& ithBlock = blocks[ith];
+				ithBlock.computeOn(integralStats);
+				if (ithBlock.canSplit(minBlockSize)) {
+					if (ithBlock.needSplit(this->params.T_mse(ParamSet::P_INIT, ithBlock.center[2]))) {
+						ithBlock.split(blocks, flag);
+					} else {
+						max_mse = std::max(max_mse, ithBlock.mse);
+					}
+				} else {
+					ithBlock.valid = false;
+				}
+				++ith; //check next
+			}
+			blocks.resize(blocks.size());
+
+#if defined(DEBUG_ADAPT)
+			int nvalid = 0;
+			dAdapt = cv::Mat(this->height, this->width, CV_8UC3, cv::Scalar(0, 0, 0));
+			for (int i = 0; i < (int)blocks.size(); ++i) {
+				Block& iBlock = blocks[i];
+				if (!iBlock.valid) continue;
+				dAdapt(cv::Rect(iBlock)).setTo(/*cv::Scalar(iBlock.mse * 255 / max_mse, 0, 0)*/cv::Scalar(rand()%255,rand()%255,rand()%255));
+				++nvalid;
+			}
+			std::cout << "init: #blocks=" << blocks.size() << ", #valid=" << nvalid << ", max_mse=" << max_mse << std::endl;
+#endif
+
+			//2. create node
+			std::vector<PlaneSeg::Ptr> G(blocks.size(), static_cast<PlaneSeg::Ptr>(0));
+			for (int i = 0; i < (int)blocks.size(); ++i) {
+				Block& iBlock = blocks[i];
+				if (!iBlock.valid) continue;
+				//node
+				PlaneSeg::shared_ptr p(iBlock.newPlaneSeg(i));
+				G[i] = p.get();
+				minQ.push(p);
+				++nvalid;
+			}
+
+			//3. create edge
+			for (int i = 0; i < (int)blocks.size(); ++i) {
+				Block& iBlock = blocks[i];
+				if (!iBlock.valid) continue;
+				const int crns[8][2] = {
+					{ iBlock.imin - 1, iBlock.jmin },
+					{ iBlock.imin, iBlock.jmin - 1 },
+					{ iBlock.imin, iBlock.jmax + 1 },
+					{ iBlock.imin - 1, iBlock.jmax },
+					{ iBlock.imax, iBlock.jmax + 1 },
+					{ iBlock.imax + 1, iBlock.jmax },
+					{ iBlock.imax + 1, iBlock.jmin },
+					{ iBlock.imax, iBlock.jmin - 1 }
+				};
+				const int src_crns[4][2] = {
+					{ iBlock.imin, iBlock.jmin },
+					{ iBlock.imin, iBlock.jmax },
+					{ iBlock.imax, iBlock.jmax },
+					{ iBlock.imax, iBlock.jmin }
+				};
+				for (int k = 0; k < 8; ++k) {
+					const int il=crns[k][0];
+					const int jl=crns[k][1];
+					if (0 <= il && il < this->height && 0 <= jl && jl < this->width) {
+						const int jth = flag(il,jl);
+						if(jth>=0) {
+							Block& jBlock = blocks[jth];
+							if(jBlock.valid) {
+								G[i]->connect(G[jth]); //TODO: T_ang
+#if defined(DEBUG_ADAPT)
+								cv::line(dAdapt, iBlock.IndexCenter(), jBlock.IndexCenter(), cv::Scalar(rand()%255,rand()%255,rand()%255));
+#endif
+							}
+						}
+						if(k%2==0) {
+							const int sil=src_crns[k/2][0];
+							const int sjl=src_crns[k/2][1];
+							flag(sil,sjl)=-1; //invalidate
+						}
+					}
+				}
+			}//for each block
+#if defined(DEBUG_ADAPT)
+			//cv::imshow("dAdapt", dAdapt);
+#endif
+		}
 
 		/**
 		 *  \brief initialize a graph from pointsIn

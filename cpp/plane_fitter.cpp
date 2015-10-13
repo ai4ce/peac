@@ -39,6 +39,7 @@
 
 #include "opencv2/opencv.hpp"
 
+#define DEBUG_ADAPT
 #include "AHCPlaneFitter.hpp"
 
 using ahc::utils::Timer;
@@ -96,7 +97,12 @@ public:
 		RGBDImage rgbd(*cloud);
 		Timer timer(1000);
 		timer.tic();
+
+#if defined (DEBUG_ADAPT)
+		pf.runAdaptive(&rgbd, seg);
+#else
 		pf.run(&rgbd, 0, &seg);
+#endif
 		double process_ms=timer.toc();
 
 		//blend segmentation with rgb

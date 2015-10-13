@@ -192,6 +192,18 @@ struct PlaneSeg {
 		this->stats.compute(this->center, this->normal, this->mse, this->curvature);
 	}
 
+	PlaneSeg(const int rid, const double mse, const double center[3], const double normal[3], const double curvature, const Stats& stats)
+	{
+		this->stats = stats;
+		this->rid = rid;
+		this->mse = mse;
+		std::copy(center, center + 3, this->center);
+		std::copy(normal, normal + 3, this->normal);
+		this->N = stats.N;
+		this->curvature = curvature;
+		nouse = false;
+	}
+
 	/**
 	*  \brief construct a PlaneSeg during graph initialization
 	*  
