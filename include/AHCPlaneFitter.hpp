@@ -137,6 +137,7 @@ namespace ahc {
 		bool drawCoarseBorder;
 		//std::vector<PlaneSeg::Stats> blkStats;
 		IntegralStats integralStats;
+		std::vector<Block> blocks;
 #if defined(DEBUG_INIT) || defined(DEBUG_CLUSTER)
 		std::string saveDir;
 #endif
@@ -188,6 +189,7 @@ namespace ahc {
 			rfQueue.clear();
 			//blkStats.clear();
 			dirtyBlkMbship=true;
+			blocks.clear();
 		}
 
 		double runAdaptive(const Image3D* pointsIn, cv::Mat& seg, bool verbose=true)
@@ -197,16 +199,15 @@ namespace ahc {
 			this->points = pointsIn;
 			this->height = points->height();
 			this->width = points->width();
-			//this->ds.reset(new DisjointSet((height / windowHeight)*(width / windowWidth)));
 
 			PlaneSegMinMSEQueue minQ;
 			this->initGraphAdaptive(minQ, seg);
-			//int step = this->ahCluster(minQ);
-			//this->plotSegmentImage(&seg, minSupport);//TODO
-			//if (verbose) {
-			//	std::cout << "#step=" << step << ", #extractedPlanes="
-			//		<< this->extractedPlanes.size() << std::endl;
-			//}
+			int step = this->ahCluster(minQ);
+			this->plotSegmentImageAdaptive(&seg);
+			if (verbose) {
+				std::cout << "#step=" << step << ", #extractedPlanes="
+					<< this->extractedPlanes.size() << std::endl;
+			}
 			return 1;
 		}
 
@@ -664,6 +665,35 @@ namespace ahc {
 			}
 		}
 
+		void plotSegmentImageAdaptive(cv::Mat* pSeg)
+		{
+			if (pSeg == 0) return;
+			cv::Mat& seg = *pSeg;
+			seg.create(this->height, this->width, CV_8UC3);
+			seg.setTo(cv::Scalar(0, 0, 0));
+
+			const int nseg = this->extractedPlanes.size();
+			if (nseg>colors.size()) {
+				std::vector<cv::Vec3b> tmpColors = pseudocolor(nseg - (int)colors.size());
+				colors.insert(colors.end(), tmpColors.begin(), tmpColors.end());
+			}
+			rid2plid.clear();
+			for (int plid = 0; plid<(int)extractedPlanes.size(); ++plid) {
+				rid2plid.insert(std::pair<int, int>(ds->Find(extractedPlanes[plid]->rid), plid));
+			}
+			std::cout << std::endl;
+			for (int i = 0; i < (int)blocks.size(); ++i) {
+				Block& iBlock = blocks[i];
+				const int rid = this->ds->Find(i);
+				if (rid2plid.find(rid) == rid2plid.end()) {
+					std::cout << i << " ";
+					continue;
+				}
+				seg(cv::Rect(iBlock)).setTo(this->colors[rid2plid[rid]]);
+			}
+			std::cout << "are ignored" << std::endl;
+		}
+
 		//called by run when doRefine==false
 		void plotSegmentImage(cv::Mat* pSeg, const double supportTh)
 		{
@@ -775,122 +805,75 @@ namespace ahc {
 		 *  \brief initialize a graph from pointsIn using adaptive blocks
 		 */
 		void initGraphAdaptive(PlaneSegMinMSEQueue& minQ, cv::Mat& dAdapt) {
+			Timer timer(1000);
+			timer.tic();
 			this->integralStats.computeIntegral(*points);
+			timer.toctic("0. computeIntegral");
 
-			struct Block {
-				const int imin, imax, jmin, jmax;
-				bool valid;
-				
-				ahc::PlaneSeg::Stats stats;
-				double normal[3];
-				double center[3];
-				double mse;
-				double curvature;
-
-				Block() : imin(-1), imax(-1), jmin(-1), jmax(-1), valid(false) {}
-				Block(int i0, int i1, int j0, int j1) : imin(i0), imax(i1), jmin(j0), jmax(j1), valid(true), mse(DBL_MAX), curvature(DBL_MAX) {}
-
-				inline operator cv::Rect() const { return cv::Rect(jmin, imin, IndexWidth(), IndexHeight()); }
-				
-				inline void computeOn(const IntegralStats& intStats) {
-					intStats.compute(imax, imin, jmax, jmin, center, normal, mse, curvature, stats);
-				}
-
-				inline int IndexWidth() const { return jmax - jmin + 1; }
-				inline int IndexHeight() const { return imax - imin + 1; }
-				inline cv::Point IndexCenter() const { return cv::Point((jmax + jmin) / 2, (imax + imin) / 2); }
-
-				inline bool canSplit(const int minBlockSize = 2) const {
-					return imax - imin + 1 >= 2 * minBlockSize
-						&& jmax - jmin + 1 >= 2 * minBlockSize;
-				}
-
-				inline bool needSplit(const double mse_threshold) const {
-					return mse > mse_threshold;
-				}
-
-				inline void setFlag(const int id, cv::Mat1i& flag) const {
-					const int width = IndexWidth();
-					const int height = IndexHeight();
-					flag(cv::Rect(jmin, imin, width, 1)) = id;
-					flag(cv::Rect(jmin, imin, 1, height)) = id;
-					flag(cv::Rect(jmax, imin, 1, height)) = id;
-					flag(cv::Rect(jmin, imax, width, 1)) = id;
-				}
-
-				inline void split(std::vector<Block>& output) { //TODO: split into 2 or 4?
-					valid = false;
-					const int imid_low = (imin + imax) / 2;
-					const int imid_high = imid_low + 1;
-					const int jmid_low = (jmin + jmax) / 2;
-					const int jmid_high = jmid_low + 1;
-
-					output.push_back(Block(imin, imid_low, jmin, jmid_low));
-					output.push_back(Block(imid_high, imax, jmin, jmid_low));
-					output.push_back(Block(imid_high, imax, jmid_high, jmax));
-					output.push_back(Block(imin, imid_low, jmid_high, jmax));
-				}
-
-				inline PlaneSeg::Ptr newPlaneSeg(const int rid) const {
-					PlaneSeg::Ptr ret = new PlaneSeg(rid, mse, center, normal, curvature, stats);
-					return ret;
-				}
-			};
 			const int minBlockSize = std::min(this->windowHeight, this->windowWidth);
-			std::vector<Block> blocks;
-			blocks.reserve(this->height*this->width/(minBlockSize*minBlockSize)); //at most this many blocks
+			std::vector<Block> tmpblocks;
+			tmpblocks.reserve(this->height*this->width/(minBlockSize*minBlockSize)); //at most this many blocks
 
-			blocks.push_back(Block(0, this->height - 1, 0, this->width - 1));
+			tmpblocks.push_back(Block(0, this->height - 1, 0, this->width - 1));
 			int ith = 0;
+			int nvalidblocks = 0;
 			//1. divide
 			double max_mse = 0;
-			while (ith<blocks.size()) {
-				Block& ithBlock = blocks[ith];
+			while (ith<tmpblocks.size()) {
+				Block& ithBlock = tmpblocks[ith];
 				ithBlock.computeOn(integralStats);
 				if (ithBlock.needSplit(this->params.T_mse(ParamSet::P_INIT, ithBlock.center[2]))) {//TODO: is the threshold appropriate
 					if (ithBlock.canSplit(minBlockSize)) {
-						ithBlock.split(blocks);
+						ithBlock.split2(tmpblocks); //TODO: split into 2 or 4?
 					} else {
 						ithBlock.valid = false;
 					}
 				} else {
 					max_mse = std::max(max_mse, ithBlock.mse);
+					++nvalidblocks;
 				}
 				++ith; //check next
 			}
-			blocks.resize(blocks.size());
+			//remove all invalid block
+			blocks.reserve(nvalidblocks);
+			for (int i = 0; i < tmpblocks.size(); ++i) {
+				Block& iblock = tmpblocks[i];
+				if (!iblock.valid) continue;
+				blocks.push_back(Block(iblock));
+			}
+			assert(blocks.size() == nvalidblocks);
 
-#if defined(DEBUG_ADAPT) && 1
-			int nvalid = 0;
+			timer.toc("1. divide");
+
+#if defined(DEBUG_ADAPT)
 			dAdapt = cv::Mat(this->height, this->width, CV_8UC3, cv::Scalar(0, 0, 0));
 			for (int i = 0; i < (int)blocks.size(); ++i) {
 				Block& iBlock = blocks[i];
-				if (!iBlock.valid) continue;
 				dAdapt(cv::Rect(iBlock)).setTo(/*cv::Scalar(iBlock.mse * 255 / max_mse, 0, 0)*/cv::Scalar(rand()%255,rand()%255,rand()%255));
-				++nvalid;
 			}
-			std::cout << "init: #blocks=" << blocks.size() << ", #valid=" << nvalid << ", sqrt(max_mse)=" << std::sqrt(max_mse) << "mm" << std::endl;
 #endif
+			std::cout << "#blocks=" << blocks.size() << ", sqrt(max_mse)=" << std::sqrt(max_mse) << "mm" << std::endl;
 
+			timer.tic();
+			this->ds.reset(new DisjointSet(blocks.size()));
 			cv::Mat1i flag(this->height, this->width, -1); //flag for connecting edges
+			std::vector<PlaneSeg::Ptr> G(blocks.size());
 
 			//2. create node
-			std::vector<PlaneSeg::Ptr> G(blocks.size(), static_cast<PlaneSeg::Ptr>(0));
 			for (int i = 0; i < (int)blocks.size(); ++i) {
 				Block& iBlock = blocks[i];
-				if (!iBlock.valid) continue;
 				iBlock.setFlag(i, flag);
 				//node
-				PlaneSeg::shared_ptr p(iBlock.newPlaneSeg(i));
+				PlaneSeg::shared_ptr p(iBlock.newPlaneSeg(i)); //TODO: depth discontinuity
 				G[i] = p.get();
 				minQ.push(p);
 			}
+			timer.toctic("2. create node");
 
 			//3. create edge
 			for (int i = 0; i < (int)blocks.size(); ++i) {
 				Block& iBlock = blocks[i];
-				if (!iBlock.valid) continue;
-				const double similarityTh = params.T_ang(ParamSet::P_INIT, G[i]->center[2]);
+				const double similarityTh = params.T_ang(ParamSet::P_INIT, G[i]->center[2]); //TODO: maybe T_ang should take #points in PlaneSeg into consideration
 				const int crns[8][2] = {
 					{ iBlock.imin - 1, iBlock.jmin },
 					{ iBlock.imin, iBlock.jmin - 1 },
@@ -916,7 +899,7 @@ namespace ahc {
 							Block& jBlock = blocks[jth];
 							if(jBlock.valid && G[i]->normalSimilarity(*G[jth]) >= similarityTh) {
 								G[i]->connect(G[jth]);
-#if defined(DEBUG_ADAPT) && 1
+#if defined(DEBUG_ADAPT)
 								cv::line(dAdapt, iBlock.IndexCenter(), jBlock.IndexCenter(), cv::Scalar(rand()%255,rand()%255,rand()%255));
 #endif
 							}
@@ -929,6 +912,7 @@ namespace ahc {
 					}
 				}
 			}//for each block
+			timer.toc("3. create edge");
 		}
 
 		/**

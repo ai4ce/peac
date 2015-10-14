@@ -17,7 +17,7 @@ struct IntegralStats {
 	IntegralStats(const Image3D& points) { computeIntegral(points); }
 
 	template<typename Image3D>
-	void computeIntegral(const Image3D& points) {
+	void computeIntegral(const Image3D& points) { //TODO: this takes ~30ms for VGA size, maybe we should do block integral instead of pixel-wise integral
 		const int W = points.width();
 		const int H = points.height();
 
@@ -95,6 +95,87 @@ struct IntegralStats {
 		Syz.create(height, width, CV_64FC1);
 		Sxz.create(height, width, CV_64FC1);
 		N.create(height, width, CV_64FC1);
+	}
+};
+
+struct Block {
+	const int imin, imax, jmin, jmax;
+	bool valid;
+
+	ahc::PlaneSeg::Stats stats;
+	double normal[3];
+	double center[3];
+	double mse;
+	double curvature;
+
+	Block() : imin(-1), imax(-1), jmin(-1), jmax(-1), valid(false) {}
+	Block(int i0, int i1, int j0, int j1) : imin(i0), imax(i1), jmin(j0), jmax(j1), valid(true), mse(DBL_MAX), curvature(DBL_MAX) {}
+	Block(const Block& other) : imin(other.imin), imax(other.imax), jmin(other.jmin), jmax(other.jmax), valid(other.valid),
+		stats(other.stats), mse(other.mse), curvature(other.curvature)
+	{
+		std::copy(other.normal, other.normal + 3, normal);
+		std::copy(other.center, other.center + 3, center);
+	}
+
+	inline operator cv::Rect() const { return cv::Rect(jmin, imin, IndexWidth(), IndexHeight()); }
+
+	inline void computeOn(const IntegralStats& intStats) {
+		intStats.compute(imax, imin, jmax, jmin, center, normal, mse, curvature, stats);
+	}
+
+	inline int IndexWidth() const { return jmax - jmin + 1; }
+	inline int IndexHeight() const { return imax - imin + 1; }
+	inline cv::Point IndexCenter() const { return cv::Point((jmax + jmin) / 2, (imax + imin) / 2); }
+
+	inline bool canSplit(const int minBlockSize = 2) const {
+		return IndexHeight() >= 2 * minBlockSize
+			&& IndexWidth() >= 2 * minBlockSize;
+	}
+
+	inline bool needSplit(const double mse_threshold) const {
+		return mse > mse_threshold;
+	}
+
+	inline void setFlag(const int id, cv::Mat1i& flag) const {
+		const int width = IndexWidth();
+		const int height = IndexHeight();
+		flag(cv::Rect(jmin, imin, width, 1)) = id;
+		flag(cv::Rect(jmin, imin, 1, height)) = id;
+		flag(cv::Rect(jmax, imin, 1, height)) = id;
+		flag(cv::Rect(jmin, imax, width, 1)) = id;
+	}
+
+	inline void split2(std::vector<Block>& output) {
+		valid = false;
+		if (IndexWidth() >= IndexHeight()) { //split j
+			const int jmid_low = (jmin + jmax) / 2;
+			const int jmid_high = jmid_low + 1;
+			output.push_back(Block(imin, imax, jmin, jmid_low));
+			output.push_back(Block(imin, imax, jmid_high, jmax));
+		} else { //split i
+			const int imid_low = (imin + imax) / 2;
+			const int imid_high = imid_low + 1;
+			output.push_back(Block(imin, imid_low, jmin, jmax));
+			output.push_back(Block(imid_high, imax, jmin, jmax));
+		}
+	}
+
+	inline void split4(std::vector<Block>& output) {
+		valid = false;
+		const int imid_low = (imin + imax) / 2;
+		const int imid_high = imid_low + 1;
+		const int jmid_low = (jmin + jmax) / 2;
+		const int jmid_high = jmid_low + 1;
+
+		output.push_back(Block(imin, imid_low, jmin, jmid_low));
+		output.push_back(Block(imid_high, imax, jmin, jmid_low));
+		output.push_back(Block(imid_high, imax, jmid_high, jmax));
+		output.push_back(Block(imin, imid_low, jmid_high, jmax));
+	}
+
+	inline PlaneSeg::Ptr newPlaneSeg(const int rid) const {
+		PlaneSeg::Ptr ret = new PlaneSeg(rid, mse, center, normal, curvature, stats);
+		return ret;
 	}
 };
 

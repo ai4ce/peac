@@ -192,16 +192,20 @@ struct PlaneSeg {
 		this->stats.compute(this->center, this->normal, this->mse, this->curvature);
 	}
 
-	PlaneSeg(const int rid, const double mse, const double center[3], const double normal[3], const double curvature, const Stats& stats)
+	PlaneSeg(const int init_block_id, const double mse, const double center[3], const double normal[3], const double curvature, const Stats& stats)
 	{
 		this->stats = stats;
-		this->rid = rid;
+		this->rid = init_block_id;
 		this->mse = mse;
 		std::copy(center, center + 3, this->center);
 		std::copy(normal, normal + 3, this->normal);
 		this->N = stats.N;
 		this->curvature = curvature;
-		nouse = false;
+		if (this->N >= 4) {
+			nouse = false;
+		} else {
+			nouse = true;
+		}
 	}
 
 	/**
@@ -390,7 +394,7 @@ struct PlaneSeg {
 	*/
 	inline void mergeNbsFrom(PlaneSeg& pa, PlaneSeg& pb, DisjointSet& ds) {
 		//now we are sure that merging pa and pb is accepted
-		ds.Union(pa.rid, pb.rid);
+		this->rid = ds.Union(pa.rid, pb.rid);
 
 		//the new neighbors should be pa.nbs+pb.nbs-pa-pb
 		this->nbs.insert(pa.nbs.begin(), pa.nbs.end());
