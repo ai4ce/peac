@@ -1153,7 +1153,7 @@ namespace ahc {
 					if(p->normalSimilarity(*nb) < params.T_ang(ParamSet::P_MERGING, p->center[2])) continue;
 					PlaneSeg::shared_ptr merge(new PlaneSeg(*p, *nb));
 					if(cand_merge==0 || cand_merge->mse>merge->mse ||
-						(cand_merge->mse==merge->mse && cand_merge->N<merge->mse))
+						(cand_merge->mse==merge->mse && cand_merge->N<merge->N))
 					{
 						cand_merge=merge;
 						cand_nb=nb;

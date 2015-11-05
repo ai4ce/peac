@@ -98,7 +98,7 @@ public:
 		Timer timer(1000);
 		timer.tic();
 
-#define USE_ADAPT
+//#define USE_ADAPT
 #if defined (USE_ADAPT)
 		pf.runAdaptive(&rgbd, seg);
 #else
