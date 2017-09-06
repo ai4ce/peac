@@ -2,13 +2,20 @@ cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 
 project(ahc)
 
-find_package(OpenCV REQUIRED)
-find_package(PCL 1.2 REQUIRED)
+find_package(OpenCV COMPONENTS core highgui imgproc imgcodecs QUIET)
+if(NOT OpenCV_FOUND)
+	find_package(OpenCV REQUIRED)
+endif()
+find_package(PCL COMPONENTS io REQUIRED)
 
-include_directories("../include")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../include")
 include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
+
+list(REMOVE_ITEM PCL_LIBRARIES ${VTK_LIBRARIES} ${QHULL_LIBRARIES} ${FLANN_LIBRARIES}) #we don't need vtk, qhull, flann
+message(STATUS "OpenCV_LIBS=${OpenCV_LIBS}")
+message(STATUS "PCL_LIBRARIES=${PCL_LIBRARIES}")
 
 ###### Options
 option(OPT_USE_BOOST_SHARED_PTR "use boost::shared_ptr instead of std::shared_ptr (in C++11) as ahc::shared_ptr" ON)

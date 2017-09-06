@@ -56,27 +56,29 @@ protected:
 	std::vector< ColorCloud::Ptr > recorded_cloud;
 	std::vector<cv::Mat> recorded_rgb;
 	int record_id;
+	boost::mutex record_mutex;
 
 public:
-	MainLoop () : done(false), cloud_(), record_id(0) {}
+	MainLoop () : done(false), cloud_(), record_id(0)/*, capturing(true), recording(false)*/ {}
 
 	//process a new frame of point cloud
 	void onNewCloud (const ColorCloud::ConstPtr &cloud)
 	{
+		boost::mutex::scoped_lock lock(record_mutex);
 		cloud_ = cloud;
 
 		//fill RGB
-		if(rgb.empty() || rgb.rows!=cloud->height || rgb.cols!=cloud->width) {
+		if (rgb.empty() || rgb.rows != cloud->height || rgb.cols != cloud->width) {
 			rgb.create(cloud->height, cloud->width, CV_8UC3);
 		}
-		for(int i=0; i<(int)cloud->height; ++i) {
-			for(int j=0; j<(int)cloud->width; ++j) {
-				const pcl::PointXYZRGBA& p=cloud->at(j,i);
-				if(!pcl_isnan(p.z)) {
-					rgb.at<cv::Vec3b>(i,j)=cv::Vec3b(p.b,p.g,p.r);
+		for (int i = 0; i < (int)cloud->height; ++i) {
+			for (int j = 0; j < (int)cloud->width; ++j) {
+				const pcl::PointXYZRGBA& p = cloud->at(j, i);
+				if (!pcl_isnan(p.z)) {
+					rgb.at<cv::Vec3b>(i, j) = cv::Vec3b(p.b, p.g, p.r);
 				} else {
 					static const cv::Vec3b white(255, 255, 255);
-					rgb.at<cv::Vec3b>(i,j)=white;//whiten invalid area
+					rgb.at<cv::Vec3b>(i, j) = white;//whiten invalid area
 				}
 			}
 		}
@@ -84,9 +86,9 @@ public:
 		//show frame rate
 		std::stringstream stext;
 		stext << "id=" << recorded_rgb.size();
-		cv::putText(rgb, stext.str(), cv::Point(15,15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0,0,0,1));
+		cv::putText(rgb, stext.str(), cv::Point(15, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0, 1));
 
-		cv::imshow("rgb", rgb);
+		//cv::imshow("rgb", rgb); //calling imshow inside capture thread seems not a good idea for tablet
 	}
 
 	//start the main loop
@@ -103,29 +105,35 @@ public:
 
 		grabber->registerCallback(f);
 
-		//grabbing loop
-		grabber->start();
-
 		cv::namedWindow("rgb");
 		cv::namedWindow("recorded");
 		const int baseX = 80, baseY = 10;
 		cv::moveWindow("rgb", baseX, baseY);
 		cv::moveWindow("recorded", baseX, baseY + 10 + 480);
 
+		//grabbing loop
+		grabber->start();
+
 		//GUI loop
 		while (!done)
 		{
-			onKey(cv::waitKey(1000)); //update parameter once per second
+			onKey(cv::waitKey(50)); //update parameter once per second
 		}
 
 		grabber->stop();
+		delete grabber;
 	}
 
 	void record_current() {
-		if (!cloud_) return;
-		recorded_rgb.push_back(rgb.clone());
-		recorded_cloud.push_back(ColorCloud::Ptr(new ColorCloud(*cloud_)));
+		{
+			boost::mutex::scoped_lock lock(record_mutex);
+			if (!cloud_) return;
+			//recording = true;
+			recorded_rgb.push_back(rgb.clone());
+			recorded_cloud.push_back(ColorCloud::Ptr(new ColorCloud(*cloud_)));
+		}
 
+		if (recorded_rgb.size() <= 0) return;
 		cv::imshow("recorded", recorded_rgb.back());
 		record_id = recorded_rgb.size() - 1;
 		std::cout << "#recorded=" << recorded_rgb.size() << std::endl;
@@ -175,7 +183,22 @@ public:
 				cv::imshow("recorded", recorded_rgb[record_id]);
 			}
 			break;
+		case '-':
+			if (recorded_rgb.size() > 0) {
+				recorded_rgb.pop_back();
+				recorded_cloud.pop_back();
+				record_id = recorded_rgb.size() - 1;
+				if (record_id >= 0) {
+					cv::imshow("recorded", recorded_rgb[record_id]);
+				} else {
+					cv::imshow("recorded", cv::Mat::zeros(480,640,CV_8UC1));
+				}
+				std::cout << "deleted last recorded frame! (" << recorded_rgb.size() << " frames left)." << std::endl;
+			}
+			break;
 		}
+		if(!rgb.empty())
+			cv::imshow("rgb", rgb);
 	}
 };
 

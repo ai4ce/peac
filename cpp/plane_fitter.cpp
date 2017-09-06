@@ -102,7 +102,49 @@ public:
 #if defined (USE_ADAPT)
 		pf.runAdaptive(&rgbd, seg);
 #else
+#if 0
 		pf.run(&rgbd, 0, &seg);
+#else
+		std::vector< std::vector<int> > membership;
+		pf.run(&rgbd, &membership, 0);
+		{
+			static cv::Mat my_color_map;
+			my_color_map.reserve(256);
+			static const unsigned char default_colors[10][3] =
+			{
+				{ 255, 0, 0 },
+				{ 255, 255, 0 },
+				{ 100, 20, 50 },
+				{ 0, 30, 255 },
+				{ 10, 255, 60 },
+				{ 80, 10, 100 },
+				{ 0, 255, 200 },
+				{ 10, 60, 60 },
+				{ 255, 0, 128 },
+				{ 60, 128, 128 }
+			};
+			if (my_color_map.empty()) {
+				for (int i = 0; i < 10; ++i) {
+					my_color_map.push_back(cv::Vec3b(default_colors[i]));
+				}
+				for (int i = 10; i < 256; ++i) {
+					my_color_map.push_back(cv::Vec3b(rand() % 255, rand() % 255, rand() % 255));
+				}
+				my_color_map.at<cv::Vec3b>(255) = cv::Vec3b(0, 0, 0);
+			}
+			seg = cv::Mat::zeros(pf.height, pf.width, CV_8UC3);
+			for (int i = 0; i < membership.size(); ++i) {
+				const std::vector<int>& mi = membership[i];
+				for (int k = 0; k < mi.size(); ++k) {
+					const int pixid = mi[k];
+					const int py = pixid / pf.width;
+					const int px = pixid - py*pf.width;
+					seg.at<cv::Vec3b>(py, px) = my_color_map.at<cv::Vec3b>(i);
+				}
+			}
+			//cv::applyColorMap(tmp, seg, cv::COLORMAP_JET);
+		}
+#endif
 #endif
 		double process_ms=timer.toc();
 

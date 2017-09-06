@@ -99,7 +99,7 @@ struct IntegralStats {
 };
 
 struct Block {
-	const int imin, imax, jmin, jmax;
+	int imin, imax, jmin, jmax;
 	bool valid;
 
 	ahc::PlaneSeg::Stats stats;
