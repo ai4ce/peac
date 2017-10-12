@@ -241,10 +241,10 @@ int process() {
 
 	using global::pf;
 	//setup fitter
-	pf.minSupport = 3000;
-	pf.windowWidth = 10;
-	pf.windowHeight = 10;
-	pf.doRefine = true;
+	pf.minSupport = global::iniGet<int>("minSupport", 3000);
+	pf.windowWidth = global::iniGet<int>("windowWidth", 10);
+	pf.windowHeight = global::iniGet<int>("windowHeight", 10);
+	pf.doRefine = global::iniGet<int>("doRefine", 1) != 0;
 
 	pf.params.initType = (ahc::InitType)global::iniGet("initType", (int)pf.params.initType);
 
@@ -262,8 +262,8 @@ int process() {
 	pf.params.z_far = global::iniGet("z_far", pf.params.z_far);
 	pf.params.angle_near = MACRO_DEG2RAD(global::iniGet("angleDegree_near", MACRO_RAD2DEG(pf.params.angle_near)));
 	pf.params.angle_far = MACRO_DEG2RAD(global::iniGet("angleDegree_far", MACRO_RAD2DEG(pf.params.angle_far)));
-	pf.params.similarityTh_merge = MACRO_DEG2RAD(global::iniGet("similarityDegreeTh_merge", MACRO_RAD2DEG(pf.params.similarityTh_merge)));
-	pf.params.similarityTh_refine = MACRO_DEG2RAD(global::iniGet("similarityDegreeTh_refine", MACRO_RAD2DEG(pf.params.similarityTh_refine)));
+	pf.params.similarityTh_merge = std::cos(MACRO_DEG2RAD(global::iniGet("similarityDegreeTh_merge", MACRO_RAD2DEG(pf.params.similarityTh_merge))));
+	pf.params.similarityTh_refine = std::cos(MACRO_DEG2RAD(global::iniGet("similarityDegreeTh_refine", MACRO_RAD2DEG(pf.params.similarityTh_refine))));
 
 	std::string filelist = global::iniGet<std::string>("list","list.txt");
 	std::string inputDir = global::getFileDir(filelist);

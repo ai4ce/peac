@@ -39,7 +39,6 @@
 
 #include "opencv2/opencv.hpp"
 
-//#define DEBUG_ADAPT
 #include "AHCPlaneFitter.hpp"
 
 using ahc::utils::Timer;
@@ -98,10 +97,6 @@ public:
 		Timer timer(1000);
 		timer.tic();
 
-//#define USE_ADAPT
-#if defined (USE_ADAPT)
-		pf.runAdaptive(&rgbd, seg);
-#else
 #if 0
 		pf.run(&rgbd, 0, &seg);
 #else
@@ -144,7 +139,6 @@ public:
 			}
 			//cv::applyColorMap(tmp, seg, cv::COLORMAP_JET);
 		}
-#endif
 #endif
 		double process_ms=timer.toc();
 
