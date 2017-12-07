@@ -12,10 +12,10 @@ showWindow=1
 
 #T_mse
 # std tolerance for merging, unit: mm
-stdTol_merge=5
+stdTol_merge=6
 # std tolerance for init, unit: mm
-stdTol_init=5
-# \sigma in the paper, unit: mm^-1, set 0 to make depth independent
+stdTol_init=3
+# \sigma in the paper, unit: mm^-1
 depthSigma=0
 
 #T_ang
@@ -23,25 +23,24 @@ depthSigma=0
 z_near=500
 z_far=4000
 # unit: degree, corresponding normal deviation angle threshold
-# set the near and far to be the same to make depth independent
-angleDegree_near=10
-angleDegree_far=10
+angleDegree_near=15
+angleDegree_far=45
 # max deviation angle for merge, unit: degree
-similarityDegreeTh_merge=20
-similarityDegreeTh_refine=20
+similarityDegreeTh_merge=45
+similarityDegreeTh_refine=15
 
 #T_dz
-# corresponds to the 2*\alpha in the paper, set 0 to make depth independent
-depthAlpha=0
+# corresponds to the 2*\alpha in the paper
+depthAlpha=0.004
 # unit: mm
-depthChangeTol=18
+depthChangeTol=30
 
 #use 0 for Kinect and 1 for TLS data where nan points are more randomly distributed
 initType=1
 
 # min number of supporting point
 # note: adjust this if image size < 640x480
-minSupport=800
+minSupport=200
 
 # note: adjust this if image size < 640x480
 windowWidth=10
