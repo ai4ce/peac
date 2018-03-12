@@ -89,7 +89,7 @@ void fileparts(const std::string& str, std::string* pPath=0,
 	std::string path, name, ext;
 
 	if (last_sep==std::string::npos) {
-		path = "";
+		path = ".";
 		if(last_dot==std::string::npos) { // "test"
 			name = str;
 			ext = "";
@@ -232,11 +232,12 @@ int process() {
 	const std::string outputDir = global::iniGet<std::string>("outputDir", ".");
 	{//create outputDir
 #ifdef _WIN32
-		std::string cmd="mkdir "+outputDir;
+		std::string cmd="mkdir "+outputDir + " 2> NUL";
 #else
 		std::string cmd="mkdir -p "+outputDir;
 #endif
 		system(cmd.c_str());
+		std::cout << "create:" << outputDir << std::endl;
 	}
 
 	using global::pf;
@@ -265,26 +266,63 @@ int process() {
 	pf.params.similarityTh_merge = std::cos(MACRO_DEG2RAD(global::iniGet("similarityDegreeTh_merge", MACRO_RAD2DEG(pf.params.similarityTh_merge))));
 	pf.params.similarityTh_refine = std::cos(MACRO_DEG2RAD(global::iniGet("similarityDegreeTh_refine", MACRO_RAD2DEG(pf.params.similarityTh_refine))));
 
-	std::string filelist = global::iniGet<std::string>("list","list.txt");
-	std::string inputDir = global::getFileDir(filelist);
+#if defined(DEBUG_INIT) || defined(DEBUG_CLUSTER)
+	pf.saveDir = outputDir;
+	{//create debug result folder
+#ifdef _WIN32
+		std::string cmd = "mkdir " + pf.saveDir + "\\output 2> NUL";
+#else
+		std::string cmd = "mkdir -p " + pf.saveDir + "\\output";
+#endif
+		system(cmd.c_str());
+		std::cout << "create:" << (pf.saveDir + "\\output") << std::endl;
+	}
+#endif
 
-	std::ifstream is(filelist.c_str());
-	if (!is.is_open()) {
-		std::cout<<"could not open list="<<filelist<<std::endl;
-		return -1;
+	bool is_debug = global::iniGet<bool>("debug", 0);
+	int loop_cnt = global::iniGet<int>("loop", 0); //0: no loop; -1: infinite loop; >0: n loops
+
+	std::vector<std::string> fnamelist;
+	std::string filelist = global::iniGet<std::string>("list","list.txt");
+
+	if (filelist.find(".pcd") != std::string::npos) {
+		fnamelist.push_back(filelist); //support list=test.pcd to only input a single file
+		loop_cnt = global::iniGet<int>("loop", -1); //by default turn on infinite loop (-1) mode
+	} else {
+		std::string inputDir = global::getFileDir(filelist);
+
+		std::ifstream is(filelist.c_str());
+		if (!is.is_open()) {
+			std::cout << "could not open list=" << filelist << std::endl;
+			return -1;
+		}
+
+		while (is) {
+			std::string fname;
+			std::getline(is, fname);
+			if (fname.empty()) continue;
+			fname = inputDir + global::filesep + fname;
+			fnamelist.push_back(fname);
+		}
 	}
 
 	using global::showWindow;
 	showWindow = global::iniGet("showWindow", true);
-	if(showWindow)
+	if (showWindow)
 		cv::namedWindow("seg");
 
-	while(is) {
-		std::string fname;
-		std::getline(is, fname);
-		if(fname.empty()) continue;
-		fname = inputDir+global::filesep+fname;
-		
+	int idx = 0;
+	while(true)
+	{
+		if (idx >= fnamelist.size()) {
+			if (loop_cnt != 0) {
+				idx = 0;
+				if (loop_cnt > 0) --loop_cnt;
+			}
+			else break;
+		}
+
+		const std::string& fname = fnamelist[idx];
 		pcl::PointCloud<pcl::PointXYZ> cloud;
 		if(pcl::io::loadPCDFile(fname, cloud) <0) {
 			std::cout<<"fail to load: "<<fname<<std::endl;
@@ -298,12 +336,18 @@ int process() {
 			std::string outputFilePrefix = outputDir+global::filesep+global::getNameNoExtension(fname);
 			processOneFrame(cloud, outputFilePrefix);
 		}
+
+		if(!is_debug) ++idx;
+		else break; //debug mode always process the first file only and ignore loop
 	}
 
 	return 0;
 }
 
 int main(const int argc, const char** argv) {
-	global::iniLoad("plane_fitter_pcd.ini");
+	if(argc<=1)
+		global::iniLoad("plane_fitter_pcd.ini");
+	else
+		global::iniLoad(argv[1]);
 	return process();
 }

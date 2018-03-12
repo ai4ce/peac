@@ -107,6 +107,11 @@ install(TARGETS plane_fitter_pcd DESTINATION bin)
 install(FILES plane_fitter_pcd.ini DESTINATION bin)
 message(STATUS "added project: plane_fitter_pcd")
 
+add_executable(plane_fitter_pcd_debug plane_fitter_pcd_debug.cpp)
+target_link_libraries(plane_fitter_pcd_debug ${PCL_LIBRARIES} ${OpenCV_LIBS} ${LIB3x3})
+install(TARGETS plane_fitter_pcd_debug DESTINATION bin)
+message(STATUS "added project: plane_fitter_pcd_debug")
+
 add_executable(pcd_recorder pcd_recorder.cpp)
 target_link_libraries(pcd_recorder ${PCL_LIBRARIES} ${OpenCV_LIBS} ${LIB3x3})
 install(TARGETS pcd_recorder DESTINATION bin)
