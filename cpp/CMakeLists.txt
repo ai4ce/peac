@@ -101,10 +101,10 @@ target_link_libraries(plane_fitter ${PCL_LIBRARIES} ${OpenCV_LIBS} ${LIB3x3})
 install(TARGETS plane_fitter DESTINATION bin)
 message(STATUS "added project: plane_fitter")
 
-add_executable(plane_fitter_pcd plane_fitter_pcd.cpp plane_fitter_pcd.ini)
+add_executable(plane_fitter_pcd plane_fitter_pcd.cpp plane_fitter_pcd.ini plane_fitter_pcd.tls.ini)
 target_link_libraries(plane_fitter_pcd ${PCL_LIBRARIES} ${OpenCV_LIBS} ${LIB3x3})
 install(TARGETS plane_fitter_pcd DESTINATION bin)
-install(FILES plane_fitter_pcd.ini DESTINATION bin)
+install(FILES plane_fitter_pcd.ini plane_fitter_pcd.tls.ini DESTINATION bin)
 message(STATUS "added project: plane_fitter_pcd")
 
 add_executable(plane_fitter_pcd_debug plane_fitter_pcd_debug.cpp)
