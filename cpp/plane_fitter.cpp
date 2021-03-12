@@ -57,7 +57,7 @@ struct OrganizedImage3D {
 	bool get(const int row, const int col, double& x, double& y, double& z) const {
 		const PointT& pt=cloud.at(col,row);
 		x=pt.x*unitScaleFactor; y=pt.y*unitScaleFactor; z=pt.z*unitScaleFactor;
-		return pcl_isnan(z)==0; //return false if current depth is NaN
+		return std::isnan(z)==0; //return false if current depth is NaN
 	}
 };
 typedef OrganizedImage3D<pcl::PointXYZRGBA> RGBDImage;
@@ -84,7 +84,7 @@ public:
 		for(int i=0; i<(int)cloud->height; ++i) {
 			for(int j=0; j<(int)cloud->width; ++j) {
 				const pcl::PointXYZRGBA& p=cloud->at(j,i);
-				if(!pcl_isnan(p.z)) {
+				if(!std::isnan(p.z)) {
 					rgb.at<cv::Vec3b>(i,j)=cv::Vec3b(p.b,p.g,p.r);
 				} else {
 					rgb.at<cv::Vec3b>(i,j)=cv::Vec3b(255,255,255);//whiten invalid area
@@ -143,7 +143,7 @@ public:
 		double process_ms=timer.toc();
 
 		//blend segmentation with rgb
-		cv::cvtColor(seg,seg,CV_RGB2BGR);
+		cv::cvtColor(seg,seg,cv::COLOR_RGB2BGR);
 		seg=(rgb+seg)/2.0;
 		
 		//show frame rate
@@ -164,8 +164,8 @@ public:
 		pcl::Grabber* grabber = new pcl::io::OpenNI2Grabber();
 #endif
 
-		boost::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> f =
-			boost::bind (&MainLoop::onNewCloud, this, _1);
+		std::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> f =
+			std::bind (&MainLoop::onNewCloud, this, std::placeholders::_1);
 
 		grabber->registerCallback(f);
 

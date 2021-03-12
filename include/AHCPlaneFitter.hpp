@@ -902,7 +902,7 @@ namespace ahc {
 #ifdef DEBUG_INIT
 			static int cnt=0;
 			cv::namedWindow("debug initGraph");
-			cv::cvtColor(dInit,dInit,CV_RGB2BGR);
+			cv::cvtColor(dInit,dInit,cv::COLOR_RGB2BGR);
 			cv::imshow("debug initGraph", dInit);
 			std::stringstream ss;
 			ss<<saveDir<<"/output/db_init"<<std::setw(5)<<std::setfill('0')<<cnt++<<".png";

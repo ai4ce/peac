@@ -56,7 +56,7 @@ struct OrganizedImage3D {
 	inline bool get(const int row, const int col, double& x, double& y, double& z) const {
 		const PointT& pt=cloud.at(col,row);
 		x=pt.x*unitScaleFactor; y=pt.y*unitScaleFactor; z=pt.z*unitScaleFactor; //TODO: will this slowdown the speed?
-		return pcl_isnan(z)==0; //return false if current depth is NaN
+		return std::isnan(z)==0; //return false if current depth is NaN
 	}
 };
 typedef OrganizedImage3D<pcl::PointXYZ> ImageXYZ;
@@ -195,7 +195,7 @@ void processOneFrame(pcl::PointCloud<pcl::PointXYZ>& cloud, const std::string& o
 	std::cout<<process_ms<<" ms"<<std::endl;
 
 	//save seg image
-	cv::cvtColor(seg,seg,CV_RGB2BGR);
+	cv::cvtColor(seg,seg,cv::COLOR_RGB2BGR);
 	cv::imwrite(outputFilePrefix+".seg.png", seg);
 	std::cout<<"output: "<<outputFilePrefix<<".seg.png"<<std::endl;
 

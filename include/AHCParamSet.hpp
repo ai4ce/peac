@@ -114,8 +114,8 @@ struct ParamSet {
 		case P_INIT:
 			{//linear maping z->thresholding angle, clipping z also
 				double clipped_z = z;
-				clipped_z=std::max(clipped_z,z_near);
-				clipped_z=std::min(clipped_z,z_far);
+				clipped_z=std::fmax(clipped_z,z_near);
+				clipped_z=std::fmin(clipped_z,z_far);
 				const double factor = (angle_far-angle_near)/(z_far-z_near);
 				return std::cos(factor*clipped_z+angle_near-factor*z_near);
 			}
