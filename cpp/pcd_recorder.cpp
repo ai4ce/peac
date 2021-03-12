@@ -42,6 +42,7 @@
 #include <pcl/io/pcd_io.h>
 
 #include "opencv2/opencv.hpp"
+#include "boost/thread/mutex.hpp"
 
 
 class MainLoop
@@ -74,7 +75,7 @@ public:
 		for (int i = 0; i < (int)cloud->height; ++i) {
 			for (int j = 0; j < (int)cloud->width; ++j) {
 				const pcl::PointXYZRGBA& p = cloud->at(j, i);
-				if (!pcl_isnan(p.z)) {
+				if (!std::isnan(p.z)) {
 					rgb.at<cv::Vec3b>(i, j) = cv::Vec3b(p.b, p.g, p.r);
 				} else {
 					static const cv::Vec3b white(255, 255, 255);
@@ -100,8 +101,8 @@ public:
 		pcl::Grabber* grabber = new pcl::io::OpenNI2Grabber();
 #endif
 
-		boost::function<void (const ColorCloud::ConstPtr&)> f =
-			boost::bind (&MainLoop::onNewCloud, this, _1);
+		std::function<void (const ColorCloud::ConstPtr&)> f =
+			std::bind (&MainLoop::onNewCloud, this, std::placeholders::_1);
 
 		grabber->registerCallback(f);
 

@@ -26,6 +26,7 @@
 //
 #pragma once
 
+#include <iostream>
 #include <set>					//PlaneSeg::NbSet
 #include <vector>				//mseseq
 #include <limits>				//quiet_NaN
